@@ -21,3 +21,9 @@ test("admin updates only permit documented editable fields", () => {
   assert.ok(newPlaceFields.includes("categories"));
   assert.ok(newPlaceFields.includes("imageUrls"));
 });
+
+test("admin district creation only accepts district fields", () => {
+  assert.deepEqual(pick({ code: "MUANG", name: { th: "เมือง" }, role: "admin" }, ["code", "name", "center"]), {
+    code: "MUANG", name: { th: "เมือง" },
+  });
+});

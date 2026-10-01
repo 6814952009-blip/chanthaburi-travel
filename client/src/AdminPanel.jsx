@@ -16,6 +16,14 @@ const blankForm = () => ({
     isActive: true,
 });
 
+const blankDistrict = () => ({
+    name: { th: "", en: "", zh: "" },
+    introduction: { th: "", en: "", zh: "" },
+    longitude: "",
+    latitude: "",
+    googleMapsUrl: "",
+});
+
 const localized = (values) => ({
     th: values.th.trim(),
     en: values.en.trim() || values.th.trim(),
@@ -61,6 +69,9 @@ export default function AdminPanel({ token, onClose, onPlaceSaved }) {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [uploading, setUploading] = useState(false);
+    const [showDistrictForm, setShowDistrictForm] = useState(false);
+    const [districtDraft, setDistrictDraft] = useState(blankDistrict);
+    const [savingDistrict, setSavingDistrict] = useState(false);
     const [message, setMessage] = useState("");
     const isNew = selectedId === "new";
 
@@ -96,6 +107,39 @@ export default function AdminPanel({ token, onClose, onPlaceSaved }) {
         setSelectedId("new");
         setForm({ ...blankForm(), district: districts[0]?._id || "" });
         setMessage("");
+    };
+
+    const createDistrict = async () => {
+        const longitude = Number(districtDraft.longitude);
+        const latitude = Number(districtDraft.latitude);
+        if (!districtDraft.name.th.trim() || !districtDraft.introduction.th.trim() || !districtDraft.googleMapsUrl.trim() || districtDraft.longitude === "" || districtDraft.latitude === "" || !Number.isFinite(longitude) || longitude < -180 || longitude > 180 || !Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
+            setMessage("Enter a Thai name and introduction, valid coordinates, and a Google Maps URL.");
+            return;
+        }
+        setSavingDistrict(true);
+        setMessage("");
+        const baseCode = districtDraft.name.en || `DIST-${Date.now()}`;
+        const code = baseCode.toUpperCase().trim().replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, "") || `DIST-${Date.now()}`;
+        const payload = {
+            code,
+            name: localized(districtDraft.name),
+            introduction: localized(districtDraft.introduction),
+            center: { type: "Point", coordinates: [longitude, latitude] },
+            googleMapsUrl: districtDraft.googleMapsUrl.trim(),
+            displayOrder: districts.length,
+        };
+        try {
+            const district = await request("/api/admin/districts", token, { method: "POST", body: JSON.stringify(payload) });
+            setDistricts((current) => [...current, district].sort((a, b) => a.displayOrder - b.displayOrder));
+            setForm((current) => ({ ...current, district: district._id }));
+            setDistrictDraft(blankDistrict());
+            setShowDistrictForm(false);
+            setMessage("District added");
+        } catch (error) {
+            setMessage(error.message);
+        } finally {
+            setSavingDistrict(false);
+        }
     };
 
     const save = async (event) => {
@@ -184,10 +228,11 @@ export default function AdminPanel({ token, onClose, onPlaceSaved }) {
                     {loading && <p className="admin-muted">Loading editor…</p>}
                     <fieldset disabled={saving || loading}>
                         <div className="admin-grid two">
-                            <label>District<select required value={form.district} onChange={(event) => setForm({ ...form, district: event.target.value })}><option value="">Choose district</option>{districts.map((item) => <option value={item._id} key={item._id}>{item.name?.th}</option>)}</select></label>
+                            <div className="admin-district-field"><label>District<select required value={form.district} disabled={!districts.length} onChange={(event) => setForm({ ...form, district: event.target.value })}><option value="">{districts.length ? "Choose district" : "No districts yet"}</option>{districts.map((item) => <option value={item._id} key={item._id}>{item.name?.th}</option>)}</select></label><button type="button" className="admin-add-district" onClick={() => setShowDistrictForm((visible) => !visible)}>{showDistrictForm ? "Cancel" : "+ Add district"}</button></div>
                             <label>Type<select value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })}><option value="nature">Attraction</option><option value="culture">Culture</option><option value="beach">Beach</option><option value="waterfall">Waterfall</option><option value="community">Community</option><option value="cafe">Cafe</option><option value="restaurant">Restaurant</option></select></label>
                             <label className="span-two">URL slug<input required value={form.slug} onChange={(event) => setForm({ ...form, slug: event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-") })} /></label>
                         </div>
+                        {showDistrictForm && <section className="admin-district-create"><div className="admin-section-heading"><div><h3>Add a district</h3><p>Its map point and map link are required.</p></div><button type="button" className="admin-district-submit" onClick={createDistrict} disabled={savingDistrict}>{savingDistrict ? "Saving…" : "Save district"}</button></div><div className="admin-grid three">{[["th", "Thai name"], ["en", "English name"], ["zh", "Chinese name"]].map(([language, label]) => <label key={language}>{label}<input required={language === "th"} value={districtDraft.name[language]} onChange={(event) => setDistrictDraft((current) => ({ ...current, name: { ...current.name, [language]: event.target.value } }))} /></label>)}{[["th", "Thai introduction"], ["en", "English introduction"], ["zh", "Chinese introduction"]].map(([language, label]) => <label key={language}>{label}<textarea required={language === "th"} rows="2" value={districtDraft.introduction[language]} onChange={(event) => setDistrictDraft((current) => ({ ...current, introduction: { ...current.introduction, [language]: event.target.value } }))} /></label>)}<label>Longitude<input type="number" min="-180" max="180" step="any" required value={districtDraft.longitude} onChange={(event) => setDistrictDraft((current) => ({ ...current, longitude: event.target.value }))} /></label><label>Latitude<input type="number" min="-90" max="90" step="any" required value={districtDraft.latitude} onChange={(event) => setDistrictDraft((current) => ({ ...current, latitude: event.target.value }))} /></label><label className="span-two">Google Maps URL<input type="url" required value={districtDraft.googleMapsUrl} onChange={(event) => setDistrictDraft((current) => ({ ...current, googleMapsUrl: event.target.value }))} /></label></div></section>}
                         <section className="admin-section"><h3>Name</h3><div className="admin-grid three">{[["th", "Thai"], ["en", "English"], ["zh", "Chinese"]].map(([language, label]) => <label key={language}>{label}<input required={language === "th"} value={form.name[language]} onChange={(event) => updateLocalized("name", language, event.target.value)} /></label>)}</div></section>
                         <section className="admin-section"><h3>Description</h3><div className="admin-grid three">{[["th", "Thai"], ["en", "English"], ["zh", "Chinese"]].map(([language, label]) => <label key={language}>{label}<textarea required={language === "th"} rows="3" value={form.description[language]} onChange={(event) => updateLocalized("description", language, event.target.value)} /></label>)}</div></section>
                         <section className="admin-section"><h3>Background / history</h3><div className="admin-grid three">{[["th", "Thai"], ["en", "English"], ["zh", "Chinese"]].map(([language, label]) => <label key={language}>{label}<textarea required={language === "th"} rows="3" value={form.history[language]} onChange={(event) => updateLocalized("history", language, event.target.value)} /></label>)}</div></section>

@@ -7,6 +7,7 @@ const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 router.use(protect, allowRoles("admin"));
 router.get("/districts", controller.listDistrictsForAdmin);
+router.post("/districts", controller.createDistrict);
 router.get("/places", controller.listPlacesForAdmin);
 router.post("/places", controller.createPlace);
 router.patch("/places/:placeId", controller.updatePlace);
