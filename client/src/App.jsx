@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import AdminPanel from "./AdminPanel";
 import { extraPlaces } from "./catalog";
 
 let activeTimeline = [];
@@ -18,9 +19,25 @@ const labels = {
 };
 const districts = ["เมืองจันทบุรี", "ท่าใหม่", "ขลุง", "แหลมสิงห์", "โป่งน้ำร้อน", "มะขาม", "สอยดาว", "นายายอาม", "แก่งหางแมว", "เขาคิชฌกูฏ"];
 const icon = (name) => /น้ำตก/.test(name) ? "💧" : /หาด|อ่าว/.test(name) ? "🌊" : /วัด|เจดีย์|ศาล/.test(name) ? "🛕" : /เขา|ป่า|สวน|ถ้ำ|อ่าง|เขื่อน/.test(name) ? "🌿" : /ชุมชน|ตลาด|หมู่บ้าน/.test(name) ? "🏘️" : "📍";
-const places = extraPlaces.map((p) => ({ id: p.id, name: p.name.th, district: p.district, icon: icon(p.name.th) }));
+const catalogPlaces = extraPlaces.map((p) => ({ id: p.id, name: p.name.th, district: p.district, icon: icon(p.name.th) }));
+const places = catalogPlaces;
+
+const fromSavedPlace = (place) => ({
+  id: place._id,
+  name: place.name?.th || "",
+  district: (place.district?.name?.th || "").replace(/^อำเภอ/, "").replace(/^อ\./, "").trim(),
+  icon: icon(place.name?.th || ""),
+  coordinates: place.location?.coordinates,
+  description: place.description,
+  history: place.history,
+  address: place.address,
+  openingHours: place.openingHours,
+  googleMapsUrl: place.googleMapsUrl,
+  imageUrls: place.imageUrls || [],
+});
 
 function placeCoordinates(place) {
+  if (place.coordinates?.length === 2) return place.coordinates;
   if (place.id.startsWith("food-")) return [102.1, 12.61];
   const [, districtIndex, placeIndex] = place.id.split("-").map(Number);
   return [102.1 + districtIndex * 0.055 + (placeIndex % 5) * 0.009, 12.61 + districtIndex * 0.035 + Math.floor(placeIndex / 5) * 0.012];
@@ -38,7 +55,11 @@ function addMinutes(date, amount) { return new Date(date.getTime() + amount * 60
 function timeText(date) { return date.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" }); }
 
 function Auth({ t, close, done }) { const [reg, setReg] = useState(false), [form, setForm] = useState({ name: "", email: "", password: "" }), [error, setError] = useState(""); const submit = async (event) => { event.preventDefault(); try { const response = await fetch(`/api/auth/${reg ? "register" : "login"}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) }); const data = await response.json(); if (!response.ok) throw Error(data.message); localStorage.setItem("travel-token", data.token); localStorage.setItem("travel-user", JSON.stringify(data.user)); done(data.user); close(); } catch (submitError) { setError(submitError.message); } }; return <div className="modal"><form className="auth-sheet" onSubmit={submit}><button type="button" className="close" onClick={close}>×</button><h2>{reg ? t.register : t.login}</h2>{reg && <input required placeholder={t.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />}<input required type="email" placeholder="Email" onChange={(event) => setForm({ ...form, email: event.target.value })} /><input required type="password" minLength="8" placeholder={t.password} onChange={(event) => setForm({ ...form, password: event.target.value })} /><button className="primary">{reg ? t.create : t.login}</button><p className="error">{error}</p><button type="button" className="text-button" onClick={() => setReg(!reg)}>{reg ? t.back : t.switch}</button></form></div>; }
-function Detail({ p, close }) { return <div className="modal"><section className="detail-sheet"><button className="close" onClick={close}>×</button><div className="detail-hero"><span>{p.icon}</span><p>{p.district}</p><h2>{p.name}</h2></div><div className="detail-body"><h3>เกี่ยวกับสถานที่นี้</h3><p>{p.name} เป็นสถานที่ท่องเที่ยวน่าสนใจในอำเภอ{p.district} เหมาะสำหรับแวะพักผ่อน เรียนรู้เรื่องราวท้องถิ่น และสัมผัสบรรยากาศจันทบุรี</p><h3>แนะนำก่อนเดินทาง</h3><ul><li>ตรวจสอบเวลาเปิด–ปิดก่อนออกเดินทาง</li><li>เคารพกติกาและวิถีชุมชนในพื้นที่</li></ul></div></section></div>; }
+function Detail({ p, close }) {
+  const currentUser = JSON.parse(localStorage.getItem("travel-user") || "null");
+  const [adminOpen, setAdminOpen] = useState(false);
+  return <div className="modal"><section className="detail-sheet"><button className="close" onClick={close}>×</button>{currentUser?.role === "admin" && <button className="admin-open-button" onClick={() => setAdminOpen(true)}>Manage places</button>}<div className="detail-hero"><span>{p.icon}</span><p>{p.district}</p><h2>{p.name}</h2></div><div className="detail-body">{p.imageUrls?.length > 0 && <div className="detail-photos">{p.imageUrls.map((url, index) => <img key={`${url}-${index}`} src={url} alt={`${p.name} ${index + 1}`} />)}</div>}<h3>เกี่ยวกับสถานที่นี้</h3><p>{p.description?.th || `${p.name} เป็นสถานที่ท่องเที่ยวน่าสนใจในอำเภอ${p.district} เหมาะสำหรับแวะพักผ่อน เรียนรู้เรื่องราวท้องถิ่น และสัมผัสบรรยากาศจันทบุรี`}</p>{p.history?.th && <><h3>ความเป็นมา</h3><p>{p.history.th}</p></>}{p.address?.th && <><h3>ที่อยู่</h3><p>{p.address.th}</p></>}{p.openingHours?.th && <><h3>เวลาเปิดทำการ</h3><p>{p.openingHours.th}</p></>}{p.googleMapsUrl && <a href={p.googleMapsUrl} target="_blank" rel="noreferrer">เปิดใน Google Maps</a>}<h3>แนะนำก่อนเดินทาง</h3><ul><li>ตรวจสอบเวลาเปิด–ปิดก่อนออกเดินทาง</li><li>เคารพกติกาและวิถีชุมชนในพื้นที่</li></ul></div></section>{adminOpen && <AdminPanel token={localStorage.getItem("travel-token")} onClose={() => setAdminOpen(false)} />}</div>;
+}
 function StopOptions({ t, place, current, close, confirm }) { const [stayMinutes, setStayMinutes] = useState(current?.stayMinutes || 60), [wantHotel, setWantHotel] = useState(current?.wantHotel || false), [hotels, setHotels] = useState([]), [hotel, setHotel] = useState(current?.hotel || null), [loadingHotels, setLoadingHotels] = useState(false); const toggleHotel = async (checked) => { setWantHotel(checked); if (!checked) { setHotel(null); return; } setLoadingHotels(true); try { const [lng, lat] = placeCoordinates(place); const response = await fetch(`/api/travel/hotels/nearby?lng=${lng}&lat=${lat}&radius=10000`); const data = await response.json(); if (response.ok) setHotels(data); } finally { setLoadingHotels(false); } }; return <div className="modal"><form className="options-sheet" onSubmit={(event) => { event.preventDefault(); confirm({ stayMinutes: Number(stayMinutes), wantHotel, hotel }); }}><button type="button" className="close" onClick={close}>×</button><p className="eyebrow">{t.configure}</p><h2>{place.name}</h2><label>{t.stay}<span className="number-input"><input type="number" min="15" max="1440" step="15" value={stayMinutes} onChange={(event) => setStayMinutes(event.target.value)} /><small>{t.minutes}</small></span></label><label className="check-row"><input type="checkbox" checked={wantHotel} onChange={(event) => toggleHotel(event.target.checked)} />{t.hotel}</label>{wantHotel && <div className="hotel-picker">{loadingHotels && <p>กำลังค้นหาโรงแรมใกล้จุดหมาย...</p>}{!loadingHotels && !hotels.length && <p>ยังไม่พบโรงแรมในรัศมีนี้</p>}{hotels.map((item) => <label className="hotel-option" key={item._id}><input type="radio" name="hotel" checked={hotel?.googleMapsUrl === item.googleMapsUrl} onChange={() => setHotel({ name: item.name?.th || item.name, address: item.address?.th || item.address, googleMapsUrl: item.googleMapsUrl, distanceMeters: item.distanceMeters })} /><span><b>{item.name?.th || item.name}</b><small>{item.address?.th || item.address} · {Math.round(item.distanceMeters)} ม.</small><a href={item.googleMapsUrl} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>เปิดแผนที่</a></span></label>)}</div>}<button className="primary" disabled={wantHotel && !hotel}>{t.confirm}</button></form></div>; }
 
 function FoodBar() { const foodCard = (food, icon) => <article className="food-card" key={food.title}><span>{icon}</span><div><h3>{food.title}</h3><small>{food.district}</small><p>{food.detail}</p><b>ร้านที่น่าลอง: {food.shop || ""}</b>{food.phone && <a href={`tel:${food.phone}`}>☎ {food.phone}</a>}<button className="food-add" onClick={() => window.dispatchEvent(new CustomEvent("food:add", { detail: { ...food, id: `food-${food.title}`, icon, name: food.title, stayMinutes: 45 } }))}>+ เพิ่มในแผน</button></div></article>; return <section className="food-bar"><RouteMap timeline={activeTimeline} /><div className="food-heading"><p className="eyebrow">CHANTHABURI FOOD PICKS</p><h2>คนจันท์กินอะไรกัน</h2><p>เมนูที่คนจันท์แนะนำให้ลองเมื่อมาเที่ยว</p></div><div className="chicken-list">{chickenRiceShops.map((shop) => foodCard(shop, "🍗"))}</div><div className="food-grid">{foodRecommendations.map((food) => foodCard(food, food.icon))}</div></section>; }
@@ -54,10 +75,26 @@ function RouteMap({ timeline, title }) {
 }
 
 export default function App() {
-  const [lang, setLang] = useState("th"), [district, setDistrict] = useState(districts[0]), [query, setQuery] = useState(""), [plan, setPlan] = useState([]), [user, setUser] = useState(() => JSON.parse(localStorage.getItem("travel-user") || "null")), [auth, setAuth] = useState(false), [detail, setDetail] = useState(null), [options, setOptions] = useState(null), [planTitle, setPlanTitle] = useState(""), [coverImageUrl, setCoverImageUrl] = useState(""), [message, setMessage] = useState("");
+  const [lang, setLang] = useState("th"), [district, setDistrict] = useState(districts[0]), [query, setQuery] = useState(""), [plan, setPlan] = useState([]), [user, setUser] = useState(() => JSON.parse(localStorage.getItem("travel-user") || "null")), [auth, setAuth] = useState(false), [detail, setDetail] = useState(null), [options, setOptions] = useState(null), [planTitle, setPlanTitle] = useState(""), [coverImageUrl, setCoverImageUrl] = useState(""), [message, setMessage] = useState(""), [serverPlaces, setServerPlaces] = useState([]);
+  useEffect(() => {
+    let active = true;
+    fetch("/api/travel/places").then((response) => response.ok ? response.json() : []).then((items) => {
+      if (active && Array.isArray(items)) setServerPlaces(items.map(fromSavedPlace));
+    }).catch(() => { });
+    const handlePlaceSaved = (event) => {
+      const place = fromSavedPlace(event.detail);
+      setServerPlaces((current) => [place, ...current.filter((item) => item.id !== place.id)]);
+    };
+    window.addEventListener("travel:place-saved", handlePlaceSaved);
+    return () => { active = false; window.removeEventListener("travel:place-saved", handlePlaceSaved); };
+  }, []);
   useEffect(() => { const addFoodFromBar = (event) => setPlan((currentPlan) => currentPlan.some((stop) => stop.id === event.detail.id) ? currentPlan : [...currentPlan, { ...event.detail, district: event.detail.district.replace(/^อ\./, ""), wantHotel: false }]); window.addEventListener("food:add", addFoodFromBar); return () => window.removeEventListener("food:add", addFoodFromBar); }, []);
   const t = labels[lang];
-  const shown = useMemo(() => places.filter((place) => place.district === district && place.name.includes(query)), [district, query]);
+  const shown = useMemo(() => {
+    const savedNames = new Set(serverPlaces.map((place) => `${place.district}:${place.name}`));
+    return [...catalogPlaces.filter((place) => !savedNames.has(`${place.district}:${place.name}`)), ...serverPlaces]
+      .filter((place) => place.district === district && place.name.includes(query));
+  }, [district, query, serverPlaces]);
   const timeline = useMemo(() => { let cursor = new Date(2026, 0, 1, 9, 0); return plan.map((stop, index) => { const minutes = travelMinutes(plan[index - 1], stop); const arrival = addMinutes(cursor, minutes); const departure = addMinutes(arrival, stop.stayMinutes); cursor = departure; return { ...stop, travelMinutes: minutes, arrival, departure }; }); }, [plan]);
   activeTimeline = timeline;
   const configure = (place) => setOptions({ place, current: plan.find((stop) => stop.id === place.id) });

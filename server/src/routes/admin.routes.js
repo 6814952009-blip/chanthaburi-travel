@@ -1,9 +1,15 @@
 const express = require("express");
+const multer = require("multer");
 const { protect, allowRoles } = require("../middlewares/auth.middleware");
 const controller = require("../controllers/admin.controller");
+const { uploadFile } = require("../controllers/community.controller");
 const router = express.Router();
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 router.use(protect, allowRoles("admin"));
+router.get("/districts", controller.listDistrictsForAdmin);
 router.get("/places", controller.listPlacesForAdmin);
+router.post("/places", controller.createPlace);
 router.patch("/places/:placeId", controller.updatePlace);
 router.patch("/districts/:districtId", controller.updateDistrict);
+router.post("/uploads", upload.single("file"), uploadFile);
 module.exports = router;
